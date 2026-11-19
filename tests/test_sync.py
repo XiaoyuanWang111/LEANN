@@ -199,3 +199,32 @@ class TestFileSynchronizer(unittest.TestCase):
             fs2 = FileSynchronizer(root_dir=str(docs), snapshot_path=snapshot)
             added, removed, modified = fs2.detect_changes()
             assert not added and not removed and not modified
+
+    def test_directory_tracks_extensions_with_the_case_the_scan_uses(self):
+        """A full build's directory scan matches extensions exactly, so it skips NOTES.MD.
+
+        Tracking such a file anyway reports it as a change, and the incremental update then
+        loads it by name and indexes it, which a rebuild of the same directory would not do.
+        A file named on its own is loaded whatever its extension, so it stays tracked.
+        """
+        from leann.cli import LeannCLI
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            docs = Path(temp_dir) / "docs"
+            docs.mkdir()
+            for name in ("notes.md", "UPPER.MD", "LOUD.TXT"):
+                (docs / name).write_text(f"Text of {name}.", encoding="utf-8")
+            readme = Path(temp_dir) / "README.MD"
+            readme.write_text("Read me.", encoding="utf-8")
+
+            scanned = LeannCLI().load_documents([str(docs)])
+            fs = FileSynchronizer(
+                root_dir=str(docs),
+                explicit_files=[str(readme)],
+                snapshot_path=str(Path(temp_dir) / "sync.pickle"),
+                auto_load=False,
+            )
+
+            tracked = {Path(p).name for p in fs.generate_file_hashes()}
+            assert {Path(c["metadata"]["file_path"]).name for c in scanned} == {"notes.md"}
+            assert tracked == {"notes.md", "README.MD"}

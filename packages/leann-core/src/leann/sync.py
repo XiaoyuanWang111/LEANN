@@ -80,6 +80,18 @@ def _extension_allowed(path: Path, include_extensions: list[str]) -> bool:
     return path.suffix.lower() in allowed
 
 
+def _directory_scan_loads(path: Path, include_extensions: list[str]) -> bool:
+    """Whether the directory scan in load_documents() picks up *path* by its extension.
+
+    The scan takes PDFs from ``rglob("*.pdf")``, which follows the platform's case rules, and
+    every other type from ``SimpleDirectoryReader(required_exts=...)``, which compares suffixes
+    exactly. So ``NOTES.MD`` is not indexed by a full build and must not be tracked either.
+    """
+    if path.match("*.pdf"):
+        return ".pdf" in include_extensions
+    return path.suffix in include_extensions
+
+
 def _path_has_hidden_segment(path: Path) -> bool:
     return any(part.startswith(".") and part not in (".", "..") for part in path.parts)
 
@@ -113,7 +125,7 @@ def _iter_directory_files(
                 continue
             if not include_hidden and _path_has_hidden_segment(rel):
                 continue
-            if not _extension_allowed(file_path, include_extensions):
+            if not _directory_scan_loads(file_path, include_extensions):
                 continue
             if file_path.is_file():
                 paths.append(str(file_path))
