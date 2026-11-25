@@ -125,8 +125,7 @@ TOOLS = [
                 "backend_name": {
                     "type": "string",
                     "enum": ["hnsw", "ivf"],
-                    "default": "ivf",
-                    "description": "Index backend. 'ivf' supports incremental updates (recommended). 'hnsw' is faster for search but limited incremental support.",
+                    "description": "Index backend. 'ivf' supports incremental updates (recommended). 'hnsw' is faster for search but limited incremental support. Defaults to the backend of the existing index, and to 'ivf' for a new one.",
                 },
                 "force": {
                     "type": "boolean",
@@ -226,14 +225,13 @@ def handle_build(request_id, args):
 
     cmd.extend(["--docs", *docs])
 
-    backend = args.get("backend_name", "ivf")
-    cmd.extend([f"--backend-name={backend}"])
-
     if args.get("force", False):
         cmd.append("--force")
 
-    # Auto-detect embedding model from existing index to ensure incremental
-    # updates use the same model (avoids mismatch with CLI default).
+    # Auto-detect backend and embedding model from existing index to ensure incremental
+    # updates use the same ones (avoids mismatch with the defaults: the CLI cannot add to
+    # an index built with another backend).
+    backend = args.get("backend_name")
     if index_name:
         import json as _json
 
@@ -242,6 +240,8 @@ def handle_build(request_id, args):
             try:
                 with open(meta_path, encoding="utf-8") as f:
                     meta = _json.load(f)
+                if backend is None:
+                    backend = meta.get("backend_name")
                 existing_model = meta.get("embedding_model")
                 existing_mode = meta.get("embedding_mode")
                 if existing_model:
@@ -250,6 +250,7 @@ def handle_build(request_id, args):
                     cmd.extend([f"--embedding-mode={existing_mode}"])
             except (OSError, ValueError):
                 pass
+    cmd.extend([f"--backend-name={backend or 'ivf'}"])
 
     rc, stdout, stderr = _run_leann(*cmd, timeout=600)
 
